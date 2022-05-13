@@ -1,5 +1,4 @@
 using Es.Riam.AbstractsOpen;
-using Es.Riam.EnterpriseReplication;
 using Es.Riam.Gnoss.AD.EntityModel;
 using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.AD.Virtuoso;
@@ -8,6 +7,7 @@ using Es.Riam.Gnoss.Servicios;
 using Es.Riam.Gnoss.Util.Configuracion;
 using Es.Riam.Gnoss.Util.General;
 using Es.Riam.Gnoss.Util.Seguridad;
+using Es.Riam.OpenReplication;
 using Es.Riam.Util;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -45,7 +45,7 @@ namespace ServicioCorreo
                     services.AddScoped(typeof(VirtuosoAD));
                     services.AddScoped(typeof(LoggingService));
                     services.AddScoped(typeof(GnossCache));
-                    services.AddScoped<IServicesUtilVirtuosoAndReplication, ServicesVirtuosoAndBidirectionalReplicationEnterprise>();
+                    services.AddScoped<IServicesUtilVirtuosoAndReplication, ServicesVirtuosoAndBidirectionalReplicationOpen>();
                     string bdType = "";
                     IDictionary environmentVariables = Environment.GetEnvironmentVariables();
                     if (environmentVariables.Contains("connectionType"))

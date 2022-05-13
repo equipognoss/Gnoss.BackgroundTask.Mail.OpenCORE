@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Gnoss.Web.Controles\Es.Riam.Gnoss.Web.Controles.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Gnoss.Web.MVC.Models\Es.Riam.Gnoss.Web.MVC.Models.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Interfaces\Es.Riam.Interfaces.csproj" />
+    <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.OpenReplication\Es.Riam.OpenReplication.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Semantica\Es.Riam.Semantica.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Util\Es.Riam.Util.csproj" />
   </ItemGroup>

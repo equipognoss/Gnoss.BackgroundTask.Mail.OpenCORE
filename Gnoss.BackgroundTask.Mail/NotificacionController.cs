@@ -413,9 +413,9 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
 
             if (notificacion.FilaNotificacion.ProyectoID.HasValue && notificacion.FilaNotificacion.ProyectoID != ProyectoAD.MetaProyecto && notificacion.FilaNotificacion.ProyectoID != Guid.Empty)
             {
-                if (tipoProyecto == (short)TipoProyecto.Universidad20 || tipoProyecto == (short)TipoProyecto.EducacionExpandida || tipoProyecto == (short)TipoProyecto.EducacionPrimaria)
+                if ((tipoProyecto == (short)TipoProyecto.Universidad20 || tipoProyecto == (short)TipoProyecto.EducacionExpandida || tipoProyecto == (short)TipoProyecto.EducacionPrimaria) && !ProyectoPrincipalUnico.Equals(Guid.Empty) && ProyectoPrincipalUnico != ProyectoAD.MetaProyecto)
                 {
-                    cabecera = MontarCabeceraProyectoID(cabecera, pUrlContent, nombreProyecto, ProyectoAD.ProyectoDidactalia, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
+                    cabecera = MontarCabeceraProyectoID(cabecera, pUrlContent, nombreProyecto, ProyectoPrincipalUnico, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
                 }
                 else
                 {
