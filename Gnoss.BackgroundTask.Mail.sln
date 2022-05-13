@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.31205.134
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32421.90
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Gnoss.BackgroundTask.Mail", "Gnoss.BackgroundTask.Mail\Gnoss.BackgroundTask.Mail.csproj", "{AFED63D4-EF61-433F-9755-FDA3589DB075}"
 EndProject
@@ -34,8 +34,6 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Es.Riam.Util", "..\Gnoss.Commons\Es.Riam.Util\Es.Riam.Util.csproj", "{798A29A9-0F97-47F8-9BA1-99D8ED755466}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Es.Riam.AbstractsOpen", "..\Gnoss.Commons\Es.Riam.AbstractsOpen\Es.Riam.AbstractsOpen.csproj", "{BB66B312-BBF7-4150-8F92-C733B5F0A454}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Es.Riam.EnterpriseReplication", "..\Gnoss.Commons\Es.Riam.EnterpriseReplication\Es.Riam.EnterpriseReplication.csproj", "{EB453953-AEF7-4805-93EB-35416EF4F0B3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -107,10 +105,6 @@ Global
 		{BB66B312-BBF7-4150-8F92-C733B5F0A454}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BB66B312-BBF7-4150-8F92-C733B5F0A454}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BB66B312-BBF7-4150-8F92-C733B5F0A454}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EB453953-AEF7-4805-93EB-35416EF4F0B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EB453953-AEF7-4805-93EB-35416EF4F0B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EB453953-AEF7-4805-93EB-35416EF4F0B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EB453953-AEF7-4805-93EB-35416EF4F0B3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

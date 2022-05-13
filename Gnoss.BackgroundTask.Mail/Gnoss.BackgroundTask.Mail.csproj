@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <UserSecretsId>dotnet-ServicioCorreo-2C0773D2-3809-4E17-BD7F-6DBD17315272</UserSecretsId>
   </PropertyGroup>
 
@@ -14,7 +14,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.EnterpriseReplication\Es.Riam.EnterpriseReplication.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Gnoss.AD\Es.Riam.Gnoss.AD.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Gnoss.CL\Es.Riam.Gnoss.CL.csproj" />
     <ProjectReference Include="..\..\Gnoss.Commons\Es.Riam.Gnoss.Elementos\Es.Riam.Gnoss.Elementos.csproj" />
