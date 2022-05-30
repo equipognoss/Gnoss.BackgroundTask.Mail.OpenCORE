@@ -8,7 +8,7 @@ Configuración estandar de esta aplicación en el archivo docker-compose.yml:
 
 ```yml
 mail:
-    image: mail
+    image: gnoss/mail
     env_file: .env
     environment:
      virtuosoConnectionString: ${virtuosoConnectionString}
