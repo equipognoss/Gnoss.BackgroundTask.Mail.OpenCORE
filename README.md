@@ -4,6 +4,11 @@
 
 Aplicación de segundo plano que se encarga de enviar todos los emails que se mandan a través de la plataforma. 
 
+Este servicio está escuchando dos colas: 
+
+* ColaNotificacion: La Web envía a esta cola los eventos de la plataforma que requieren del envío de un email: mensaje interno a otro usuario, invitación por email, olvidé mi contraseña...
+* ColaCorreo: En esta cola se registran todos los emails enviados a través del API por aplicaciones externas. 
+
 Configuración estandar de esta aplicación en el archivo docker-compose.yml: 
 
 ```yml
