@@ -2,6 +2,8 @@
 
 # Gnoss.BackgroundTask.Mail.OpenCORE
 
+![](https://github.com/equipognoss/Gnoss.BackgroundTask.Mail.OpenCORE/workflows/BuildMail/badge.svg)
+
 Aplicación de segundo plano que se encarga de enviar todos los emails que se mandan a través de la plataforma. 
 
 Este servicio está escuchando dos colas: 
