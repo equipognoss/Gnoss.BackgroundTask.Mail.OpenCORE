@@ -34,7 +34,6 @@ using Es.Riam.Gnoss.Util.Configuracion;
 using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.CL;
 using Es.Riam.Gnoss.AD.Virtuoso;
-using Microsoft.Exchange.WebServices.Data;
 using Es.Riam.AbstractsOpen;
 
 namespace Es.Riam.Gnoss.Win.ServicioCorreo
@@ -201,8 +200,9 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 VirtuosoAD virtuosoAD = scope.ServiceProvider.GetRequiredService<VirtuosoAD>();
                 RedisCacheWrapper redisCacheWrapper = scope.ServiceProvider.GetRequiredService<RedisCacheWrapper>();
                 GnossCache gnossCache = scope.ServiceProvider.GetRequiredService<GnossCache>();
+                ConfigService configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
                 IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
-
+                ComprobarTraza("Mail", entityContext, loggingService, redisCacheWrapper, configService, servicesUtilVirtuosoAndReplication);
                 try
                 {
                     ComprobarCancelacionHilo();
@@ -223,8 +223,6 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                         //Guardo DataSet en BD física
                         notificacionCN.ActualizarNotificacion();
 
-                        servicesUtilVirtuosoAndReplication.ConexionAfinidad = "";
-
                         ControladorConexiones.CerrarConexiones(false);
                     }
 
@@ -240,6 +238,10 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                     // Ha habido un error no relacionado con el servidor SMTP, no marcamos la fila como procesada
                     loggingService.GuardarLogError(ex);
                     return false;
+                }
+                finally
+                {
+                    GuardarTraza(loggingService);
                 }
             }
         }
@@ -587,6 +589,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             }
             else
             {
+                pLoggingService.GuardarLogError($"Usuario: {parametros.usuario}, Contrasena: {parametros.clave}, SMTP: {parametros.smtp}");
                 return new UtilEws(parametros.usuario, parametros.clave, parametros.smtp);
             }
         }
@@ -891,6 +894,23 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                                     MiAsunto = MiAsunto.Replace($"{parametroReemplazar}/{language}", urlPropia);
                                 }
                             }
+                            //Evitar la doble barra (//) a la hora de enviar un correo con el enlace para responder el mensaje
+                            string[] partesHref = MiMensaje.Split("href=\"");
+                            if(partesHref.Length == 2)
+                            {
+                                int tamanioEnlace = partesHref[1].IndexOf('"');
+                                string enlace = partesHref[1].Substring(0,tamanioEnlace);
+                                if (enlace.StartsWith(parametroReemplazar))
+                                {
+                                    int parametroRemplazarLongitud = parametroReemplazar.Length;
+                                    string afterIntragnoss = enlace.Substring(parametroRemplazarLongitud);
+                                    if (afterIntragnoss.StartsWith('/') && urlPropia.EndsWith('/'))
+                                    {
+                                        urlPropia = urlPropia.TrimEnd('/');
+                                    }
+                                }
+                            }
+                            //FIN evitar doble barra
 
                             MiMensaje = MiMensaje.Replace(parametroReemplazar, urlPropia);
                             MiAsunto = MiAsunto.Replace(parametroReemplazar, urlPropia);

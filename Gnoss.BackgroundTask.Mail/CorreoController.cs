@@ -174,8 +174,9 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                 VirtuosoAD virtuosoAD = scope.ServiceProvider.GetRequiredService<VirtuosoAD>();
                 RedisCacheWrapper redisCacheWrapper = scope.ServiceProvider.GetRequiredService<RedisCacheWrapper>();
                 GnossCache gnossCache = scope.ServiceProvider.GetRequiredService<GnossCache>();
+                ConfigService configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
                 IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
-
+                ComprobarTraza("Mail", entityContext, loggingService, redisCacheWrapper, configService, servicesUtilVirtuosoAndReplication);
                 ComprobarCancelacionHilo();
                 try
                 {
@@ -187,8 +188,6 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
                         ProcesarCorreo(correoID, entityContext, entityContextBASE, loggingService, servicesUtilVirtuosoAndReplication);
 
-                        servicesUtilVirtuosoAndReplication.ConexionAfinidad = "";
-
                         ControladorConexiones.CerrarConexiones(false);
                     }
                     return true;
@@ -197,6 +196,10 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                 {
                     loggingService.GuardarLogError(ex);
                     return true;
+                }
+                finally
+                {
+                    GuardarTraza(loggingService);
                 }
             }
         }
