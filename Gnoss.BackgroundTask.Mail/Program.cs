@@ -46,6 +46,7 @@ namespace ServicioCorreo
                     services.AddScoped(typeof(LoggingService));
                     services.AddScoped(typeof(GnossCache));
                     services.AddScoped<IServicesUtilVirtuosoAndReplication, ServicesVirtuosoAndBidirectionalReplicationOpen>();
+                    services.AddScoped(typeof(RelatedVirtuosoCL));
                     string bdType = "";
                     IDictionary environmentVariables = Environment.GetEnvironmentVariables();
                     if (environmentVariables.Contains("connectionType"))
