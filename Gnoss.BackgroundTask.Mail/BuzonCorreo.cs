@@ -326,15 +326,14 @@ namespace Es.Riam.Util
         /// <returns></returns>
         private ICorreo ObtenerGestorCorreo(Email correo)
         {
-            //if (correo.Tipo.ToLower().Equals("smtp"))
-            //{
+            if (correo.Tipo.ToLower().Equals("smtp"))
+            {
                 return new UtilCorreo(correo.ServidorCorreo.SMTP, correo.ServidorCorreo.Puerto, correo.ServidorCorreo.Usuario, correo.ServidorCorreo.Password, correo.ServidorCorreo.EsSeguro);
-            //}
-            //else
-            //{
-            //    TODO: Implementar UtilEWS con una librería que funcione en .Net 5
-            //    return new UtilEws(correo.ServidorCorreo.Usuario, correo.ServidorCorreo.Password, correo.ServidorCorreo.SMTP);
-            //}
+            }
+            else
+            {           
+                return new UtilEws(correo.ServidorCorreo.Usuario, correo.ServidorCorreo.Password, correo.ServidorCorreo.SMTP);
+            }
         }
 
         /// <summary>
