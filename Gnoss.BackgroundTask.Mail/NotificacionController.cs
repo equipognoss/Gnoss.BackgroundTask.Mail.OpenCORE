@@ -218,7 +218,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                         NotificacionCN notificacionCN = new NotificacionCN(entityContext, loggingService, mConfigService, servicesUtilVirtuosoAndReplication);
                         GestionNotificaciones gestionNotificaciones = new GestionNotificaciones(notificacionCN.ObtenerEnvioNotificacionesRabbitMQ(notificacionID), loggingService, entityContext, mConfigService, servicesUtilVirtuosoAndReplication);
 
-                        ProcesarFilaNotificacion(new Notificacion(notificacion, gestionNotificaciones, loggingService), entityContext, loggingService, servicesUtilVirtuosoAndReplication);
+                        ProcesarFilaNotificacion(new Notificacion(notificacion, gestionNotificaciones, loggingService), entityContext, loggingService, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
 
                         //Guardo DataSet en BD física
                         notificacionCN.ActualizarNotificacion();
@@ -246,7 +246,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             }
         }
 
-        public void RealizarMantenimientoBD(LoggingService pLoggingService, EntityContext pEntityContext, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        public void RealizarMantenimientoBD(LoggingService pLoggingService, EntityContext pEntityContext, IServicesUtilVirtuosoAndReplication pServicesUtilVirtuosoAndReplication, RedisCacheWrapper pRedisCacheWrapper)
         {
             mEnviarCorreos = true;
 
@@ -266,10 +266,10 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                     }
 
                     //(Re)Carga los datos de la BD referentes a notificaciones
-                    gestorNotificaciones = CargarDatos(pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
+                    gestorNotificaciones = CargarDatos(pEntityContext, pLoggingService, pServicesUtilVirtuosoAndReplication);
 
                     //Envio y Log Notificaciones
-                    estadoProceso = EnviarNotificaciones(gestorNotificaciones, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
+                    estadoProceso = EnviarNotificaciones(gestorNotificaciones, pEntityContext, pLoggingService, pServicesUtilVirtuosoAndReplication, pRedisCacheWrapper);
 
                     switch (estadoProceso)
                     {
@@ -316,7 +316,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 {
                     try
                     {
-                        NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+                        NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, pServicesUtilVirtuosoAndReplication);
                         //Guardo DataSet en BD física
                         notificacionCN.ActualizarNotificacion();
 
@@ -349,7 +349,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             }
             else
             {
-                RealizarMantenimientoBD(logginService, entityContext, servicesUtilVirtuosoAndReplication);
+                RealizarMantenimientoBD(logginService, entityContext, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
             }
         }
 
@@ -361,15 +361,15 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         {
             string idioma = "";
 
-            if (notificacionCorreo.PersonaID.HasValue)
+            if (notificacionCorreo.Notificacion.Idioma != null && notificacionCorreo.Notificacion.Idioma.Trim() != "")
             {
-                idioma = persCN.ObtenerIdiomaDePersonaID(notificacionCorreo.PersonaID.Value);
+                idioma = notificacionCorreo.Notificacion.Idioma;
             }
-            if (idioma == "")
+            if (string.IsNullOrEmpty(idioma))
             {
-                if (notificacionCorreo.Notificacion.Idioma != null && notificacionCorreo.Notificacion.Idioma.Trim() != "")
+                if (notificacionCorreo.PersonaID.HasValue)
                 {
-                    idioma = notificacionCorreo.Notificacion.Idioma;
+                    idioma = persCN.ObtenerIdiomaDePersonaID(notificacionCorreo.PersonaID.Value);
                 }
                 else
                 {
@@ -624,7 +624,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         /// Realiza el envío de las notificaciones
         /// </summary>
         /// <returns>Estado del resultado de la operacion del envio de las notificaciones</returns>
-        private LogStatus EnviarNotificaciones(GestionNotificaciones pGestorNotificaciones, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        private LogStatus EnviarNotificaciones(GestionNotificaciones pGestorNotificaciones, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication, RedisCacheWrapper pRedisCacheWrapper)
         {
             pGestorNotificaciones.CargarGestor();
 
@@ -632,7 +632,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             {
                 foreach (Notificacion notificacion in pGestorNotificaciones.ListaNotificaciones.Values)
                 {
-                    ProcesarFilaNotificacion(notificacion, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
+                    ProcesarFilaNotificacion(notificacion, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication, pRedisCacheWrapper);
                 }
                 mDiccionarioParametroGralPorProyecto.Clear();
             }
@@ -643,7 +643,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             return mEstadoProceso;
         }
 
-        private void ProcesarFilaNotificacion(Notificacion pNotificacion, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        private void ProcesarFilaNotificacion(Notificacion pNotificacion, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication, RedisCacheWrapper pRedisCacheWrapper)
         {
             PersonaCN persCN = new PersonaCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
             ProyectoCN proyCN = new ProyectoCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
@@ -700,7 +700,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             nombrecortoComunidad = filaProyecto.NombreCorto;
                         }
 
-                        UtilIdiomas utilIdiomas = new UtilIdiomas(idioma, pLoggingService, pEntityContext, mConfigService);
+                        UtilIdiomas utilIdiomas = new UtilIdiomas(idioma, pLoggingService, pEntityContext, mConfigService, pRedisCacheWrapper);
 
                         string urlProyecto = urlBaseProyecto;
                         if (idioma != "es")
