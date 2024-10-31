@@ -38,6 +38,21 @@ namespace ServicioCorreo
                 .ConfigureServices((hostContext, services) =>
                 {
                     IConfiguration configuration = hostContext.Configuration;
+                    ILoggerFactory loggerFactory =
+                       LoggerFactory.Create(builder =>
+                       {
+                           builder.AddConfiguration(configuration.GetSection("Logging"));
+                           builder.AddSimpleConsole(options =>
+                           {
+                               options.IncludeScopes = true;
+                               options.SingleLine = true;
+                               options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+                               options.UseUtcTimestamp = true;
+                           });
+                       });
+
+                    services.AddSingleton(loggerFactory);
+                    AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
                     services.AddScoped(typeof(UtilTelemetry));
                     services.AddScoped(typeof(Usuario));
                     services.AddScoped(typeof(UtilPeticion));
@@ -58,13 +73,12 @@ namespace ServicioCorreo
                     {
                         bdType = configuration.GetConnectionString("connectionType");
                     }
-                    if (bdType.Equals("2"))
+                    if (bdType.Equals("2") || bdType.Equals("1"))
                     {
                         services.AddScoped(typeof(DbContextOptions<EntityContext>));
                         services.AddScoped(typeof(DbContextOptions<EntityContextBASE>));
                     }
                     services.AddSingleton<ConfigService>();
-                    services.AddSingleton<ILoggerFactory, LoggerFactory>();
 
                     string acid = "";
                     if (environmentVariables.Contains("acid"))
@@ -96,6 +110,16 @@ namespace ServicioCorreo
 
                                 );
                     }
+                    else if (bdType.Equals("1"))
+                    {
+                        services.AddDbContext<EntityContext, EntityContextOracle>(options =>
+                                options.UseOracle(acid)
+                                );
+                        services.AddDbContext<EntityContextBASE, EntityContextBASEOracle>(options =>
+                                options.UseOracle(baseConnection)
+
+                                );
+                    }
                     else if (bdType.Equals("2"))
                     {
                         services.AddDbContext<EntityContext, EntityContextPostgres>(opt =>
@@ -106,21 +130,6 @@ namespace ServicioCorreo
                         {
                             opt.UseNpgsql(baseConnection);
                         });
-
-                        /*services.AddEntityFrameworkNpgsql().AddDbContext<EntityContext>(opt =>
-                        {
-                            var builder = new NpgsqlDbContextOptionsBuilder(opt);
-                            builder.SetPostgresVersion(new Version(9, 6));
-                            opt.UseNpgsql(acid);
-
-                        });
-                        services.AddEntityFrameworkNpgsql().AddDbContext<EntityContextBASE>(opt =>
-                        {
-                            var builder = new NpgsqlDbContextOptionsBuilder(opt);
-                            builder.SetPostgresVersion(new Version(9, 6));
-                            opt.UseNpgsql(baseConnection);
-
-                        });*/
                     }
 
                     services.AddHostedService<CorreoWorker>();
