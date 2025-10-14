@@ -20,6 +20,8 @@ using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.CL;
 using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.AbstractsOpen;
+using Microsoft.Extensions.Logging;
+using Es.Riam.Gnoss.Elementos.Suscripcion;
 
 namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 {
@@ -37,6 +39,8 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
         Dictionary<string, BuzonCorreo> mDicBuzones;
         BaseComunidadCN mBaseComunidadCN;
         string mDirectorioLog;
+        private ILogger mlogger;
+        private ILoggerFactory mLoggerFactory;
         #endregion
 
         #region Constructor
@@ -45,11 +49,13 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
         /// Constructor a partir de la base de datos pasada por parámetro
         /// </summary>
         /// <param name="pBaseDeDatos">Base de datos</param>
-        public CorreoController(IServiceScopeFactory serviceScope, ConfigService configService, int sleep = 0)
-            : base(serviceScope, configService)
+        public CorreoController(IServiceScopeFactory serviceScope, ConfigService configService, ILogger<CorreoController> logger, ILoggerFactory loggerFactory, int sleep = 0)
+            : base(serviceScope, configService,logger,loggerFactory)
         {
             mListaBuzones = new List<string>();
             mDicBuzones = new Dictionary<string, BuzonCorreo>();
+            mlogger = logger;
+            mLoggerFactory = loggerFactory;
             mDirectorioLog = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + Path.DirectorySeparatorChar + "logs_correos";
             DirectoryInfo directorioLog = new DirectoryInfo(mDirectorioLog);
             if (!directorioLog.Exists)
@@ -60,7 +66,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
         protected override ControladorServicioGnoss ClonarControlador()
         {
-            return new CorreoController(ScopedFactory, mConfigService);
+            return new CorreoController(ScopedFactory, mConfigService, mLoggerFactory.CreateLogger<CorreoController>(), mLoggerFactory);
         }
 
         #endregion
@@ -96,7 +102,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
                     if (mBaseComunidadCN == null)
                     {
-                        mBaseComunidadCN = new BaseComunidadCN(pEntityContext,  pLoggingService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication);
+                        mBaseComunidadCN = new BaseComunidadCN(pEntityContext,  pLoggingService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
                     }
 
                     CargarDatos();
@@ -113,7 +119,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                         }
                         else
                         {
-                            buzonCorreo = new BuzonCorreo(buzon, ScopedFactory, mConfigService, mDirectorioLog);
+                            buzonCorreo = new BuzonCorreo(buzon, ScopedFactory, mConfigService, mDirectorioLog, mLoggerFactory.CreateLogger<BuzonCorreo>(), mLoggerFactory);
                             mDicBuzones.Add(buzon, buzonCorreo);
                             buzonCorreo.LanzarEnvio();
                         }
@@ -147,7 +153,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                 RabbitMQClient.ReceivedDelegate funcionProcesarItem = new RabbitMQClient.ReceivedDelegate(ProcesarItem);
                 RabbitMQClient.ShutDownDelegate funcionShutDown = new RabbitMQClient.ShutDownDelegate(OnShutDown);
 
-                RabbitMqClientLectura = new RabbitMQClient(RabbitMQClient.BD_SERVICIOS_WIN, COLA_CORREO, logginService, mConfigService, EXCHANGE, COLA_CORREO);
+                RabbitMqClientLectura = new RabbitMQClient(RabbitMQClient.BD_SERVICIOS_WIN, COLA_CORREO, logginService, mConfigService, mLoggerFactory.CreateLogger<RabbitMQClient>(), mLoggerFactory, EXCHANGE, COLA_CORREO);
 
                 try
                 {
@@ -157,7 +163,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                 catch (Exception ex)
                 {
                     mReiniciarLecturaRabbit = true;
-                    logginService.GuardarLogError(ex);
+                    logginService.GuardarLogError(ex,mlogger);
                 }
             }
         }
@@ -194,7 +200,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
                 }
                 catch (Exception ex)
                 {
-                    loggingService.GuardarLogError(ex);
+                    loggingService.GuardarLogError(ex, mlogger);
                     return true;
                 }
                 finally
@@ -206,7 +212,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
         private void ProcesarCorreo(int pCorreoID, EntityContext pEntityContext, EntityContextBASE pEntityContextBASE, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
-            BaseComunidadCN baseComunidadCN = new BaseComunidadCN(pEntityContext, pLoggingService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication);
+            BaseComunidadCN baseComunidadCN = new BaseComunidadCN(pEntityContext, pLoggingService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
             ColaCorreo colaCorreo = baseComunidadCN.ObtenerColaCorreoCorreoID(pCorreoID);
             string smtp = colaCorreo.SMTP;
 
@@ -230,7 +236,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
             }
             else
             {
-                buzonCorreo = new BuzonCorreo(smtp, ScopedFactory, mConfigService, mDirectorioLog);
+                buzonCorreo = new BuzonCorreo(smtp, ScopedFactory, mConfigService, mDirectorioLog, mLoggerFactory.CreateLogger<BuzonCorreo>(), mLoggerFactory);
                 mDicBuzones.Add(smtp, buzonCorreo);
                 while (buzonCorreo.HayCorreosPendientes(pCorreoID, pEntityContext, pEntityContextBASE, pLoggingService, servicesUtilVirtuosoAndReplication))
                 {

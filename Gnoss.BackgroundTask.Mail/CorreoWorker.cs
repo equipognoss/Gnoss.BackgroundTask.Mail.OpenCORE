@@ -1,3 +1,4 @@
+using Es.Riam.Gnoss.Elementos.Suscripcion;
 using Es.Riam.Gnoss.Servicios;
 using Es.Riam.Gnoss.Util.Configuracion;
 using Es.Riam.Gnoss.Win.ServicioCorreo;
@@ -15,13 +16,14 @@ namespace ServicioCorreo
 {
     public class CorreoWorker : Worker
     {
-        private readonly ILogger<CorreoWorker> _logger;
         private readonly ConfigService _configService;
-
-        public CorreoWorker(ILogger<CorreoWorker> logger, ConfigService configService, IServiceScopeFactory scopeFactory) : base(logger, scopeFactory)
+        private ILogger mlogger;
+        private ILoggerFactory mLoggerFactory;
+        public CorreoWorker(ConfigService configService, IServiceScopeFactory scopeFactory, ILogger<CorreoWorker> logger, ILoggerFactory loggerFactory) : base(logger, scopeFactory)
         {
-            _logger = logger;
             _configService = configService;
+            mlogger = logger;
+            mLoggerFactory = loggerFactory;
         }
 
         protected override List<ControladorServicioGnoss> ObtenerControladores()
@@ -29,8 +31,8 @@ namespace ServicioCorreo
             ControladorServicioGnoss.INTERVALO_SEGUNDOS = _configService.ObtenerIntervalo();
 
             List<ControladorServicioGnoss> controladores = new List<ControladorServicioGnoss>();
-            controladores.Add(new CorreoController(ScopedFactory, _configService, 1));
-            controladores.Add(new NotificacionController(ScopedFactory, _configService, 2));
+            controladores.Add(new CorreoController(ScopedFactory, _configService, mLoggerFactory.CreateLogger<CorreoController>(), mLoggerFactory, 1));
+            controladores.Add(new NotificacionController(ScopedFactory, _configService, mLoggerFactory.CreateLogger<NotificacionController>(), mLoggerFactory, 2));
 
             return controladores;
         }

@@ -35,6 +35,9 @@ using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.CL;
 using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.AbstractsOpen;
+using Es.Riam.Interfaces.InterfacesOpen;
+using Microsoft.Extensions.Logging;
+using Es.Riam.Gnoss.Elementos.Suscripcion;
 
 namespace Es.Riam.Gnoss.Win.ServicioCorreo
 {
@@ -144,6 +147,8 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         private Dictionary<Guid, GestorParametroGeneral> mDiccionarioParametroGralPorProyecto = new Dictionary<Guid, GestorParametroGeneral>();
 
         public Dictionary<Guid, ConfiguracionEnvioCorreo> mListaConfiguracionEnvioCorreo;
+        private ILogger mlogger;
+        private ILoggerFactory mLoggerFactory;
 
         #endregion
 
@@ -153,15 +158,17 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         /// Constructor a partir de la base de datos pasada por parámetro
         /// </summary>
         /// <param name="pBaseDeDatos">Base de datos</param>
-        public NotificacionController(IServiceScopeFactory serviceScope, ConfigService configService, int sleep = 0)
-            : base(serviceScope, configService)
+        public NotificacionController(IServiceScopeFactory serviceScope, ConfigService configService, ILogger<NotificacionController> logger, ILoggerFactory loggerFactory, int sleep = 0)
+            : base(serviceScope, configService,logger,loggerFactory)
         {
             mListaConfiguracionEnvioCorreo = new Dictionary<Guid, ConfiguracionEnvioCorreo>();
+            mlogger = logger;
+            mLoggerFactory = loggerFactory;
         }
 
         protected override ControladorServicioGnoss ClonarControlador()
         {
-            return new NotificacionController(ScopedFactory, mConfigService);
+            return new NotificacionController(ScopedFactory, mConfigService, mLoggerFactory.CreateLogger<NotificacionController>(), mLoggerFactory);
         }
 
         #endregion
@@ -175,7 +182,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             RabbitMQClient.ReceivedDelegate funcionProcesarItem = new RabbitMQClient.ReceivedDelegate(ProcesarItem);
             RabbitMQClient.ShutDownDelegate funcionShutDown = new RabbitMQClient.ShutDownDelegate(OnShutDown);
 
-            RabbitMqClientLectura = new RabbitMQClient(RabbitMQClient.BD_SERVICIOS_WIN, COLA_NOTIFICACION, pLoginService, mConfigService, EXCHANGE, COLA_NOTIFICACION);
+            RabbitMqClientLectura = new RabbitMQClient(RabbitMQClient.BD_SERVICIOS_WIN, COLA_NOTIFICACION, pLoginService, mConfigService, mLoggerFactory.CreateLogger<RabbitMQClient>(), mLoggerFactory, EXCHANGE, COLA_NOTIFICACION);
 
             try
             {
@@ -185,7 +192,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             catch (Exception ex)
             {
                 mReiniciarLecturaRabbit = true;
-                pLoginService.GuardarLogError(ex);
+                pLoginService.GuardarLogError(ex, mlogger);
             }
         }
 
@@ -202,6 +209,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 GnossCache gnossCache = scope.ServiceProvider.GetRequiredService<GnossCache>();
                 ConfigService configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
                 IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
+                IAvailableServices availableServices = scope.ServiceProvider.GetRequiredService<IAvailableServices>();
                 ComprobarTraza("Mail", entityContext, loggingService, redisCacheWrapper, configService, servicesUtilVirtuosoAndReplication);
                 try
                 {
@@ -215,13 +223,13 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
 
                         AD.EntityModel.Models.Notificacion.Notificacion notificacion = entityContext.Notificacion.Where(item => item.NotificacionID.Equals(notificacionID)).FirstOrDefault();
 
-                        NotificacionCN notificacionCN = new NotificacionCN(entityContext, loggingService, mConfigService, servicesUtilVirtuosoAndReplication);
-                        GestionNotificaciones gestionNotificaciones = new GestionNotificaciones(notificacionCN.ObtenerEnvioNotificacionesRabbitMQ(notificacionID), loggingService, entityContext, mConfigService, servicesUtilVirtuosoAndReplication);
+                        NotificacionCN notificacionCN = new NotificacionCN(entityContext, loggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<NotificacionCN>(), mLoggerFactory);
+                        GestionNotificaciones gestionNotificaciones = new GestionNotificaciones(notificacionCN.ObtenerEnvioNotificacionesRabbitMQ(notificacionID), loggingService, entityContext, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<GestionNotificaciones>(), mLoggerFactory);
 
-                        ProcesarFilaNotificacion(new Notificacion(notificacion, gestionNotificaciones, loggingService), entityContext, loggingService, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
+                        ProcesarFilaNotificacion(new Notificacion(notificacion, gestionNotificaciones), entityContext, loggingService, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
 
                         //Guardo DataSet en BD física
-                        notificacionCN.ActualizarNotificacion();
+                        notificacionCN.ActualizarNotificacion(availableServices);
 
                         ControladorConexiones.CerrarConexiones(false);
                     }
@@ -230,13 +238,13 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 }
                 catch (GnossSmtpException ex)
                 {
-                    loggingService.GuardarLogError(ex);
+                    loggingService.GuardarLogError(ex, mlogger);
                     return true;
                 }
                 catch (Exception ex)
                 {
                     // Ha habido un error no relacionado con el servidor SMTP, no marcamos la fila como procesada
-                    loggingService.GuardarLogError(ex);
+                    loggingService.GuardarLogError(ex, mlogger);
                     return false;
                 }
                 finally
@@ -284,7 +292,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                     if (!estadoProceso.Equals(LogStatus.NoEnviado))
                     {
                         //Escribe entrada en Log
-                        pLoggingService.GuardarLog(entradaLog);
+                        pLoggingService.GuardarLog(entradaLog, mlogger);
                     }
                 }
                 catch (OperationCanceledException)
@@ -294,33 +302,37 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 catch (SmtpException smtpEx)
                 {
                     //La configuración del buzon de correo (cuenta, usuario, password) es erronea, se escribe en el log y se detiene el servicio.
-                    pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "La configuración del buzón (dirección de correo, usuario y contraseña) no es válida: " + smtpEx.Message + " : " + smtpEx.StackTrace));
+                    pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "La configuración del buzón (dirección de correo, usuario y contraseña) no es válida: " + smtpEx.Message + " : " + smtpEx.StackTrace),mlogger);
 
                     //Recogemos el innerexception antes de lanzar el nuevo exception:
                     if (smtpEx.InnerException != null)
                     {
-                        pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") InnerExceptionMessage: " + this.CrearEntradaRegistro(LogStatus.Error, smtpEx.InnerException.Message) + " InnerExceptionStackTrace: " + smtpEx.InnerException.StackTrace);
+                        pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") InnerExceptionMessage: " + this.CrearEntradaRegistro(LogStatus.Error, smtpEx.InnerException.Message) + " InnerExceptionStackTrace: " + smtpEx.InnerException.StackTrace, mlogger);
                     }
                 }
                 catch (Exception ex)
                 {
-                    pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, ex.Message));
+                    pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, ex.Message), mlogger);
 
                     //Recogemos el innerexception
                     if (ex.InnerException != null)
                     {
-                        pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") InnerExceptionMessage: " + this.CrearEntradaRegistro(LogStatus.Error, ex.InnerException.Message) + " InnerException StackTrace: " + ex.InnerException.StackTrace);
+                        pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") InnerExceptionMessage: " + this.CrearEntradaRegistro(LogStatus.Error, ex.InnerException.Message) + " InnerException StackTrace: " + ex.InnerException.StackTrace, mlogger);
                     }
                 }
                 finally
                 {
                     try
-                    {
-                        NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, pServicesUtilVirtuosoAndReplication);
+                    {                       
                         //Guardo DataSet en BD física
-                        notificacionCN.ActualizarNotificacion();
-
-                        notificacionCN.Dispose();
+                        using (var scope = ScopedFactory.CreateScope())
+                        {
+                            IAvailableServices availableServices = scope.ServiceProvider.GetRequiredService<IAvailableServices>();
+							NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, pServicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<NotificacionCN>(), mLoggerFactory);
+							notificacionCN.ActualizarNotificacion(availableServices);
+							notificacionCN.Dispose();
+						}
+							
                         if (gestorNotificaciones != null)
                         {
                             gestorNotificaciones.Dispose();
@@ -328,7 +340,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                     }
                     catch (Exception ex)
                     {
-                        pLoggingService.GuardarLog(ex.Message);
+                        pLoggingService.GuardarLog(ex.Message, mlogger);
                     }
 
                     //Duermo el proceso el tiempo establecido
@@ -441,7 +453,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         private string MontarCabeceraProyectoID(string pCabecera, string pUrlContent, string pNombreProyecto, Guid pProyectoID, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
             string cabecera = pCabecera;
-            ParametroGeneralCN paramGeneralCN = new ParametroGeneralCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+            ParametroGeneralCN paramGeneralCN = new ParametroGeneralCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<ParametroGeneralCN>(), mLoggerFactory);
             ParametroGeneral filaParamGeneral = paramGeneralCN.ObtenerFilaParametrosGeneralesDeProyecto(pProyectoID);
 
             if (!string.IsNullOrEmpty(filaParamGeneral.CoordenadasSup))
@@ -451,12 +463,12 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 {
                     v = "?" + filaParamGeneral.VersionFotoImagenSupGrande;
                 }
-                cabecera = cabecera.Replace("IMAGENPROYECTO", "<img src=\"" + pUrlContent + "/Imagenes/Proyectos/" + pProyectoID.ToString() + ".png" + v + "\">");
+                cabecera = cabecera.Replace("IMAGENPROYECTO", $"<img src=\"{pUrlContent}/imagenes/proyectos/{pProyectoID.ToString()}.png{v}\">");
 
             }
             else
             {
-                cabecera = cabecera.Replace("IMAGENPROYECTO", "<p style=\"font-size:30px;color:#8186BD;\">" + pNombreProyecto + "</p>");
+                cabecera = cabecera.Replace("IMAGENPROYECTO", $"<p style=\"font-size:30px;color:#8186BD;\">{pNombreProyecto}</p>");
             }
 
             return cabecera;
@@ -485,21 +497,18 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             {
 
                 string URCONNOMBRECOMUNIDAD = utilIdiomas.GetText("METABUSCADOR", "TODASCOMUNIDADES");
-                string SECCIONNOTIFICACIONES = "<a href=\"" + urlBaseProyecto + "/editar-perfil-notificacion\">" + utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONNOTIFICACIONPERFIL") + "</a>";
+                string SECCIONNOTIFICACIONES = $"<a href=\"{urlBaseProyecto}/editar-perfil-notificacion\">{utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONNOTIFICACIONPERFIL")}</a>";
 
-                if (!string.IsNullOrEmpty(nombrecortoComunidad))
+                if (!string.IsNullOrEmpty(nombrecortoComunidad) && notificacion.FilaNotificacion.MensajeID == (short)TiposNotificacion.BoletinSuscripcion)
                 {
-                    if (notificacion.FilaNotificacion.MensajeID == (short)TiposNotificacion.BoletinSuscripcion)
-                    {
-                        URCONNOMBRECOMUNIDAD = "<a href=\"" + urlProyecto + "\">" + nombreProyecto + "</a>";
-                        SECCIONNOTIFICACIONES = "<a href=\"" + urlProyecto + "/" + utilIdiomas.GetText("URLSEM", "ADMINISTRARSUSCRIPCIONCOMUNIDAD") + "\">" + utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONSUSCRIBETECOMUNIDAD", nombreProyecto) + "</a>";
-                    }
+                    URCONNOMBRECOMUNIDAD = $"<a href=\"{urlProyecto}\">{nombreProyecto}</a>";
+                    SECCIONNOTIFICACIONES = $"<a href=\"{urlProyecto}/{utilIdiomas.GetText("URLSEM", "ADMINISTRARSUSCRIPCIONCOMUNIDAD")}\">{utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONSUSCRIBETECOMUNIDAD", nombreProyecto)}</a>";
                 }
 
                 pie = pie.Replace("<#URCONNOMBRECOMUNIDAD#>", URCONNOMBRECOMUNIDAD);
                 pie = pie.Replace("<#SECCIONNOTIFICACIONES#>", SECCIONNOTIFICACIONES);
-                pie = pie.Replace("<#POLITICAPRIVACIDAD#>", urlProyecto + "/" + utilIdiomas.GetText("URLSEM", "POLITICAPRIVACIDAD"));
-                pie = pie.Replace("<#CONDICIONESUSO#>", urlProyecto + "/" + utilIdiomas.GetText("URLSEM", "CONDICIONESUSO"));
+                pie = pie.Replace("<#POLITICAPRIVACIDAD#>", $"{urlProyecto}/{utilIdiomas.GetText("URLSEM", "POLITICAPRIVACIDAD")}");
+                pie = pie.Replace("<#CONDICIONESUSO#>", $"{urlProyecto}/{utilIdiomas.GetText("URLSEM", "CONDICIONESUSO")}");
             }
             pie = SustituirParametrosMensajes(pie, urlProyecto, nombreProyecto, pUrlContent);
 
@@ -589,7 +598,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             }
             else
             {
-                pLoggingService.GuardarLogError($"Usuario: {parametros.usuario}, Contrasena: {parametros.clave}, SMTP: {parametros.smtp}");
+                pLoggingService.GuardarLogError($"Usuario: {parametros.usuario}, Contrasena: {parametros.clave}, SMTP: {parametros.smtp}", mlogger);
                 return new UtilEws(parametros.usuario, parametros.clave, parametros.smtp);
             }
         }
@@ -606,7 +615,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             }
             else
             {
-                ParametroCN parametroCN = new ParametroCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+                ParametroCN parametroCN = new ParametroCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<ParametroCN>(), mLoggerFactory);
                 parametros = parametroCN.ObtenerConfiguracionEnvioCorreo(pProyectoID);
                 parametroCN.Dispose();
                 mListaConfiguracionEnvioCorreo.Add(pProyectoID, parametros);
@@ -645,8 +654,8 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
 
         private void ProcesarFilaNotificacion(Notificacion pNotificacion, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication, RedisCacheWrapper pRedisCacheWrapper)
         {
-            PersonaCN persCN = new PersonaCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
-            ProyectoCN proyCN = new ProyectoCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+            PersonaCN persCN = new PersonaCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<PersonaCN>(), mLoggerFactory);
+            ProyectoCN proyCN = new ProyectoCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<ProyectoCN>(), mLoggerFactory);
 
             AD.EntityModel.Models.Notificacion.NotificacionCorreoPersona notificacionCorreo = pNotificacion.FilaNotificacion.NotificacionCorreoPersona.FirstOrDefault();
 
@@ -700,7 +709,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             nombrecortoComunidad = filaProyecto.NombreCorto;
                         }
 
-                        UtilIdiomas utilIdiomas = new UtilIdiomas(idioma, pLoggingService, pEntityContext, mConfigService, pRedisCacheWrapper);
+                        UtilIdiomas utilIdiomas = new UtilIdiomas(idioma, pLoggingService, pEntityContext, mConfigService, pRedisCacheWrapper, mLoggerFactory.CreateLogger<UtilIdiomas>(), mLoggerFactory);
 
                         string urlProyecto = urlBaseProyecto;
                         if (idioma != "es")
@@ -708,7 +717,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             urlBaseProyecto += $"/{idioma}";
                             urlProyecto += "/" + idioma;
 
-                            ParametroCN parametroCN = new ParametroCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+                            ParametroCN parametroCN = new ParametroCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<ParametroCN>(), mLoggerFactory);
                             Dictionary<string, string> listaParametros = parametroCN.ObtenerParametrosProyecto(proyectoID);
                             bool proyectoSinURL = listaParametros.ContainsKey(ParametroAD.ProyectoSinNombreCortoEnURL) && listaParametros[ParametroAD.ProyectoSinNombreCortoEnURL] == "1";
 
@@ -759,7 +768,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             if (notificacionCorreo.OrganizacionPersonaID.HasValue)
                             {
 
-                                OrganizacionCN orgCN = new OrganizacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+                                OrganizacionCN orgCN = new OrganizacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<OrganizacionCN>(), mLoggerFactory);
                                 string nombreCortoOrg = orgCN.ObtenerNombreOrganizacionPorID(notificacionCorreo.OrganizacionPersonaID.Value).NombreCorto;
                                 orgCN.Dispose();
                                 identidad = "/" + utilIdiomas.GetText("URLSEM", "IDENTIDAD") + "/" + nombreCortoOrg;
@@ -896,10 +905,10 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             }
                             //Evitar la doble barra (//) a la hora de enviar un correo con el enlace para responder el mensaje
                             string[] partesHref = MiMensaje.Split("href=\"");
-                            if(partesHref.Length == 2)
+                            if (partesHref.Length == 2)
                             {
                                 int tamanioEnlace = partesHref[1].IndexOf('"');
-                                string enlace = partesHref[1].Substring(0,tamanioEnlace);
+                                string enlace = partesHref[1].Substring(0, tamanioEnlace);
                                 if (enlace.StartsWith(parametroReemplazar))
                                 {
                                     int parametroRemplazarLongitud = parametroReemplazar.Length;
@@ -921,7 +930,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                         {
                             if (string.IsNullOrEmpty(mCorreoSugerencias))
                             {
-                                ParametroAplicacionCN paramApliCN = new ParametroAplicacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
+                                ParametroAplicacionCN paramApliCN = new ParametroAplicacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<ParametroAplicacionCN>(), mLoggerFactory);
                                 mCorreoSugerencias = paramApliCN.ObtenerCorreoSugerencias();
                                 paramApliCN.Dispose();
                             }
@@ -977,14 +986,14 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                         bool tieneParametrosSinCompletar = Regex.IsMatch(MiAsunto, "(<#.+#>|<@.+@>)") || Regex.IsMatch(MiMensaje, "(<#.+#>|<@.+@>)");
                         if (tieneParametrosSinCompletar)
                         {
-                            pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "No se ha enviado la notificación " + pNotificacion.Clave + " porque faltan parámetros: Asunto:" + MiAsunto + "Mensaje" + MiMensaje));
+                            pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "No se ha enviado la notificación " + pNotificacion.Clave + " porque faltan parámetros: Asunto:" + MiAsunto + "Mensaje" + MiMensaje), mlogger);
                             //Si falta algún parametro no se manda
                             if (pNotificacion.FilaNotificacion.FechaNotificacion.AddHours(1) < DateTime.Now)
                             {
                                 //Si falta algún parametro y lleva mas de un día se actualiza con error
                                 notificacionCorreo.EstadoEnvio = (short)EstadoEnvio.Error;
                                 mEstadoProceso = LogStatus.Error;
-                                pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "No se ha enviado la notificación " + pNotificacion.Clave + " porque lleva 1 hora y faltan parámetros"));
+                                pLoggingService.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, "No se ha enviado la notificación " + pNotificacion.Clave + " porque lleva 1 hora y faltan parámetros"), mlogger);
                             }
                         }
                         else
@@ -1010,7 +1019,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                                 }
                             }
 
-                            pLoggingService.GuardarLog(LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ")  \nNotificacionID : " + pNotificacion.Clave.ToString() + "\nEmail : " + email + "\nFecha : " + DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss") + "\nAsunto : " + MiAsunto + "\nCuerpo : " + MiMensaje);
+                            pLoggingService.GuardarLog(LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ")  \nNotificacionID : " + pNotificacion.Clave.ToString() + "\nEmail : " + email + "\nFecha : " + DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss") + "\nAsunto : " + MiAsunto + "\nCuerpo : " + MiMensaje, mlogger);
 
                             try
                             {
@@ -1071,7 +1080,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 }
                 catch (SmtpException ex)
                 {
-                    pLoggingService.GuardarLog(ex.Message);
+                    pLoggingService.GuardarLog(ex.Message, mlogger);
                     //La configuración del buzon de correo (cuenta, usuario, password) es erronea, se escribe en el log y se detiene el servicio.
 
                     //TODO: notificar al usuario que ha introducido mal el correo de destino
@@ -1093,7 +1102,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 }
                 catch (System.Net.Sockets.SocketException ex)
                 {
-                    pLoggingService.GuardarLog(ex.Message);
+                    pLoggingService.GuardarLog(ex.Message, mlogger);
                     notificacionCorreo.FechaEnvio = DateTime.Now;
                     if (notificacionCorreo.EstadoEnvio == (short)EstadoEnvio.Error)
                     {
@@ -1109,7 +1118,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 }
                 catch (Exception ex)
                 {
-                    pLoggingService.GuardarLog(ex.Message);
+                    pLoggingService.GuardarLog(ex.Message, mlogger);
                     throw;
                     //notificacionCorreo.FechaEnvio = DateTime.Now;
                     //if (notificacionCorreo.EstadoEnvio == (short)EstadoEnvio.Error)
@@ -1268,8 +1277,8 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 mHoraUltimaCarga = ahora;
             }
 
-            NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication);
-            GestionNotificaciones gestorNotificaciones = new GestionNotificaciones(notificacionCN.ObtenerEnvioNotificaciones(cargarFallidas), pLoggingService, pEntityContext, mConfigService, servicesUtilVirtuosoAndReplication);
+            NotificacionCN notificacionCN = new NotificacionCN(pEntityContext, pLoggingService, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<NotificacionCN>(), mLoggerFactory);
+            GestionNotificaciones gestorNotificaciones = new GestionNotificaciones(notificacionCN.ObtenerEnvioNotificaciones(cargarFallidas), pLoggingService, pEntityContext, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<GestionNotificaciones>(), mLoggerFactory);
 
             return gestorNotificaciones;
         }

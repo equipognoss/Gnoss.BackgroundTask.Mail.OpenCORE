@@ -3,6 +3,7 @@ using Es.Riam.Gnoss.AD.EntityModel;
 using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.Gnoss.CL;
+using Es.Riam.Gnoss.Elementos.Suscripcion;
 using Es.Riam.Gnoss.Logica.BASE_BD;
 using Es.Riam.Gnoss.Servicios;
 using Es.Riam.Gnoss.Util.Configuracion;
@@ -10,6 +11,7 @@ using Es.Riam.Gnoss.Util.General;
 using Es.Riam.Interfaces;
 using Es.Riam.Util.Correo;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -36,13 +38,17 @@ namespace Es.Riam.Util
         //private string mFicheroConfiguracionBDBase;
         //private string mFicheroConfiguracionBDOriginal;
         string mDirectorioLog;
+        private ILogger mlogger;
+        private ILoggerFactory mLoggerFactory;
         #endregion
 
         #region Constructores
-        public BuzonCorreo(string pBuzon, IServiceScopeFactory pServiceScopeFactory, ConfigService pConfigService, string pDirectorioLog) : base(pServiceScopeFactory, pConfigService)
+        public BuzonCorreo(string pBuzon, IServiceScopeFactory pServiceScopeFactory, ConfigService pConfigService, string pDirectorioLog, ILogger<BuzonCorreo> logger, ILoggerFactory loggerFactory) : base(pServiceScopeFactory, pConfigService,logger,loggerFactory)
         {
             mBuzon = pBuzon;
             mHistorialEnvios = new Dictionary<DateTime, int>();
+            mlogger = logger;
+            mLoggerFactory = loggerFactory;
             //mFicheroConfiguracionBDBase = pFicheroConfiguracionBD;
             //mFicheroConfiguracionBDOriginal = pFicheroConfiguracionBDOriginal;
 
@@ -185,7 +191,7 @@ namespace Es.Riam.Util
 
         public bool HayCorreosPendientes(int pCorreoID, EntityContext pEntityContext, EntityContextBASE pEntityContextBASE, LoggingService pLogginService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
-            mBaseComunidadCN = new BaseComunidadCN(pEntityContext, pLogginService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication);
+            mBaseComunidadCN = new BaseComunidadCN(pEntityContext, pLogginService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
             return mBaseComunidadCN.HayCorreosPendientesBuzon(pCorreoID);
         }
 
@@ -203,7 +209,7 @@ namespace Es.Riam.Util
                 IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
 
                 EmpezarMantenimiento();
-                mBaseComunidadCN = new BaseComunidadCN(entityContext, loggingService, entityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication);
+                mBaseComunidadCN = new BaseComunidadCN(entityContext, loggingService, entityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
 
                 if (pEsRabbit)
                 {
