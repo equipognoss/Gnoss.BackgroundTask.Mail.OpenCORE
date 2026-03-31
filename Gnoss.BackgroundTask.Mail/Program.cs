@@ -37,23 +37,17 @@ namespace ServicioCorreo
             Host.CreateDefaultBuilder(args)
                 .UseWindowsService() //Windows
                 .UseSystemd() //Linux
+                .ConfigureAppConfiguration((hostContext, config) =>
+                {
+                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                    config.AddJsonFile($"appsettings.{hostContext.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+                })
                 .ConfigureServices((hostContext, services) =>
                 {
                     IConfiguration configuration = hostContext.Configuration;
-                    ILoggerFactory loggerFactory =
-                       LoggerFactory.Create(builder =>
-                       {
-                           builder.AddConfiguration(configuration.GetSection("Logging"));
-                           builder.AddSimpleConsole(options =>
-                           {
-                               options.IncludeScopes = true;
-                               options.SingleLine = true;
-                               options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
-                               options.UseUtcTimestamp = true;
-                           });
-                       });
 
-                    services.AddSingleton(loggerFactory);
+                    LoggingService.ConfigurarLogging(services, configuration);
+
                     AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
                     services.AddScoped(typeof(UtilTelemetry));
                     services.AddScoped(typeof(Usuario));

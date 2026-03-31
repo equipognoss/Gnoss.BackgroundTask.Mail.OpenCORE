@@ -12,6 +12,7 @@ using Es.Riam.Interfaces;
 using Es.Riam.Util.Correo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,8 +25,6 @@ namespace Es.Riam.Util
     class BuzonCorreo : ControladorServicioGnoss
     {
         public static int LIMITE_CORREOS = 25;
-        public static string FICHERO_GENERAL = "logGeneral";
-        public static string FICHERO_DESTINATARIOS_FALLIDOS = "destinatarios_fallidos";
 
         #region Miembros
         private string mBuzon;
@@ -38,7 +37,7 @@ namespace Es.Riam.Util
         //private string mFicheroConfiguracionBDBase;
         //private string mFicheroConfiguracionBDOriginal;
         string mDirectorioLog;
-        private ILogger mlogger;
+        private ILogger mLogger;
         private ILoggerFactory mLoggerFactory;
         #endregion
 
@@ -47,7 +46,7 @@ namespace Es.Riam.Util
         {
             mBuzon = pBuzon;
             mHistorialEnvios = new Dictionary<DateTime, int>();
-            mlogger = logger;
+            mLogger = logger;
             mLoggerFactory = loggerFactory;
             //mFicheroConfiguracionBDBase = pFicheroConfiguracionBD;
             //mFicheroConfiguracionBDOriginal = pFicheroConfiguracionBDOriginal;
@@ -225,23 +224,20 @@ namespace Es.Riam.Util
                 mHistorialEnvios.Add(DateTime.Now, numeroEmails);
                 try
                 {
-                    estadoProceso = EnviarCorreo(pEsRabbit);
+                    estadoProceso = EnviarCorreo(loggingService, pEsRabbit);
                     string entradaLog = string.Empty;
                     switch (estadoProceso)
                     {
                         case LogStatus.Correcto:
-                            entradaLog = LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "Todos los mensajes enviados");
+                            loggingService.GuardarLog(LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "Todos los mensajes enviados"), mLogger);
                             break;
                         case LogStatus.NoEnviado:
-                            entradaLog = LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "No hay mensajes pendientes de enviar...");
+                            loggingService.GuardarLog(LogStatus.Enviando.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "No hay mensajes pendientes de enviar..."), mLogger);
                             break;
                         case LogStatus.Error:
-                            entradaLog = LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "Hay mensajes que no se han podido enviar");
+                            loggingService.GuardarLogError(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(estadoProceso, "Hay mensajes que no se han podido enviar"), mLogger);
                             break;
                     }
-
-                    //Escribe entrada en Log
-                    UtilLogs.GuardarLog(entradaLog, "", mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_GENERAL);
                 }
                 catch (OperationCanceledException)
                 {
@@ -249,17 +245,17 @@ namespace Es.Riam.Util
                 catch (System.Net.Mail.SmtpException smtpEx)
                 {
                     //La configuración del buzon de correo (cuenta, usuario, password) es erronea, se escribe en el log y se detiene el servicio.
-                    UtilLogs.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(LogStatus.Error, "La configuración del buzón (dirección de correo, usuario y contraseña) no es válida: " + smtpEx.Message + " : " + smtpEx.StackTrace), "", mDirectorioLog + Path.DirectorySeparatorChar + "logGeneral");
+                    loggingService.GuardarLogError(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") " + UtilLogs.CrearEntradaRegistro(LogStatus.Error, "La configuración del buzón (dirección de correo, usuario y contraseña) no es válida: " + smtpEx.Message + " : " + smtpEx.StackTrace), mLogger);
 
                     //Recogemos el innerexception antes de lanzar el nuevo exception:
                     if (smtpEx.InnerException != null)
                     {
-                        UtilLogs.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") InnerExceptionMessage: " + UtilLogs.CrearEntradaRegistro(LogStatus.Error, smtpEx.InnerException.Message) + " InnerExceptionStackTrace: " + smtpEx.InnerException.StackTrace, "", mDirectorioLog + Path.DirectorySeparatorChar + "logGeneral");
+                       loggingService.GuardarLogError(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBDBase + ") InnerExceptionMessage: " + UtilLogs.CrearEntradaRegistro(LogStatus.Error, smtpEx.InnerException.Message) + " InnerExceptionStackTrace: " + smtpEx.InnerException.StackTrace, mLogger);
                     }
                 }
                 catch (Exception ex)
                 {
-                    UtilLogs.GuardarExcepcion(ex, mFicheroConfiguracionBDBase, mDirectorioLog + Path.DirectorySeparatorChar + "logGeneral");
+                    loggingService.GuardarLogError(ex, mFicheroConfiguracionBDBase,mLogger);
                 }
             }
         }
@@ -268,7 +264,7 @@ namespace Es.Riam.Util
         /// Realiza el envío de las notificaciones
         /// </summary>
         /// <returns>Estado del resultado de la operacion del envio de las notificaciones</returns>
-        private LogStatus EnviarCorreo(bool esRabbit = false)
+        private LogStatus EnviarCorreo(LoggingService pLoggingService, bool esRabbit = false)
         {
             LogStatus estadoProceso = LogStatus.Correcto;
             foreach (Email correo in mCorreosEnviar)
@@ -278,11 +274,11 @@ namespace Es.Riam.Util
                     ComprobarCancelacionHilo();
                 }
                 estadoProceso = LogStatus.Correcto;
-                ICorreo gestorCorreo = CargarGestorCorreo(correo, estadoProceso);
+                ICorreo gestorCorreo = CargarGestorCorreo(correo, estadoProceso, pLoggingService);
 
                 if (estadoProceso != LogStatus.Error)
                 {
-                    EnviarCorreoDestinatarios(gestorCorreo, correo, estadoProceso);
+                    EnviarCorreoDestinatarios(gestorCorreo, correo, estadoProceso, pLoggingService);
                 }
             }
             return estadoProceso;
@@ -295,7 +291,7 @@ namespace Es.Riam.Util
         /// <param name="pCorreo">Datos del correo</param>
         /// <param name="pEstadoProceso">Estado del envio</param>
         /// <returns></returns>
-        private ICorreo CargarGestorCorreo(Email pCorreo, LogStatus pEstadoProceso)
+        private ICorreo CargarGestorCorreo(Email pCorreo, LogStatus pEstadoProceso, LoggingService pLoggingService)
         {
             ICorreo gestorCorreo = null;
             try
@@ -316,10 +312,10 @@ namespace Es.Riam.Util
                     destinatario.FechaProcesado = DateTime.Now;
                     mBaseComunidadCN.ModificarEstadoCorreo(pCorreo.CorreoID, destinatario.Email, destinatario.Estado);
                     string mensajeError = "No se ha podido enviar el correo: " + destinatario.CorreoID + " al destinatario: " + destinatario.Email;
-                    UtilLogs.GuardarLog(mensajeError, "", mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_DESTINATARIOS_FALLIDOS);
+                    pLoggingService.GuardarLogError(ex,mensajeError, mLogger);
                 }
 
-                UtilLogs.GuardarLog("Error al obtener el gestor de correo, para el correoID " + pCorreo.CorreoID + " --> " + ex.Message + "  " + ex.StackTrace, "", mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_GENERAL);
+                pLoggingService.GuardarLogError(ex, "Error al obtener el gestor de correo, para el correoID " + pCorreo.CorreoID, mLogger);
                 pEstadoProceso = LogStatus.Error;
             }
             return gestorCorreo;
@@ -348,7 +344,7 @@ namespace Es.Riam.Util
         /// <param name="pGestorCorreo">El gestor de correo a utilizar</param>
         /// <param name="pCorreo">Datos del correo a enviar</param>
         /// <param name="pEstadoProceso">Estado del proceso</param>
-        private void EnviarCorreoDestinatarios(ICorreo pGestorCorreo, Email pCorreo, LogStatus pEstadoProceso)
+        private void EnviarCorreoDestinatarios(ICorreo pGestorCorreo, Email pCorreo, LogStatus pEstadoProceso, LoggingService pLoggingService)
         {
             try
             {
@@ -362,8 +358,7 @@ namespace Es.Riam.Util
                     catch (Exception ex)
                     {
                         string mensajeError = "No se ha podido enviar el correo: " + destinatario.CorreoID + " al destinatario: " + destinatario.Email;
-                        UtilLogs.GuardarLog(mensajeError, "", mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_DESTINATARIOS_FALLIDOS);
-                        UtilLogs.GuardarExcepcion(ex, mFicheroConfiguracionBDBase, mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_GENERAL);
+                        pLoggingService.GuardarLogError(ex, mensajeError, mLogger);
                     }
                     finally
                     {
@@ -371,7 +366,7 @@ namespace Es.Riam.Util
                     }
                 }
 
-                UtilLogs.GuardarCorreo(pCorreo, mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_GENERAL);
+                pLoggingService.GuardarLogDebug($"Enviado correo: {JsonConvert.SerializeObject(pCorreo)}", mLogger);
                 mBaseComunidadCN.BorrarCorreosEnviadosCorrectamente(pCorreo.CorreoID);
 
                 bool correosNoEnviados = mBaseComunidadCN.ComprobarCorreosPendientesEnviar(pCorreo.CorreoID);
@@ -383,7 +378,7 @@ namespace Es.Riam.Util
             catch (Exception ex)
             {
                 pEstadoProceso = LogStatus.Error;
-                UtilLogs.GuardarExcepcion(ex, mFicheroConfiguracionBDBase, mDirectorioLog + Path.DirectorySeparatorChar + FICHERO_GENERAL);
+                pLoggingService.GuardarLogError(ex, mFicheroConfiguracionBDBase, mLogger);
             }
             finally
             {
