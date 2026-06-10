@@ -859,12 +859,10 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                         {
                             string urlPropia = "";
                             if (!UrlsPropiasProyectos.ContainsKey(proyectoID))
-                            {
-                                if (EsEcosistemaSinMetaProyecto)
-                                {
-                                    urlPropia = proyCN.ObtenerURLPropiaProyecto(proyectoID);
-                                }
-                                else
+                            {                               
+                                urlPropia = proyCN.ObtenerURLPropiaProyecto(proyectoID);                                
+                                
+                                if(string.IsNullOrEmpty(urlPropia))
                                 {
                                     urlPropia = proyCN.ObtenerURLPropiaProyecto(ProyectoAD.MetaProyecto);
                                 }
