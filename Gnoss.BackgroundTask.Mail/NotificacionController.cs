@@ -27,7 +27,6 @@ using Es.Riam.Gnoss.Web.Controles.ParametroGeneralDSName;
 using Es.Riam.Gnoss.AD.EntityModel.Models.ProyectoDS;
 using Es.Riam.Gnoss.RabbitMQ;
 using Es.Riam.Gnoss.Util.General;
-using Newtonsoft.Json;
 using Es.Riam.Gnoss.AD.EntityModel.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Es.Riam.Gnoss.Util.Configuracion;
@@ -37,7 +36,7 @@ using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.AbstractsOpen;
 using Es.Riam.Interfaces.InterfacesOpen;
 using Microsoft.Extensions.Logging;
-using Es.Riam.Gnoss.Elementos.Suscripcion;
+using System.Text.Json;
 
 namespace Es.Riam.Gnoss.Win.ServicioCorreo
 {
@@ -105,17 +104,17 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         /// <summary>
         /// Intervalo de repetición de carga de notificaciones fallidas
         /// </summary>
-        private long mIntervalo = 3000000000; //5 minutos
+        private readonly long mIntervalo = 3000000000; //5 minutos
 
         /// <summary>
         /// Intervalo de repetición de carga de notificaciones fallidas
         /// </summary>
-        private long mIntervaloCancelacion = 864000000000; //24 horas
+        private readonly long mIntervaloCancelacion = 864000000000; //24 horas
 
         /// <summary>
         /// Lista con los Smtp StatusCode que serán notificables al usuario
         /// </summary>
-        private List<SmtpStatusCode> mErroresNotificables = new List<SmtpStatusCode> { SmtpStatusCode.MailboxUnavailable };
+        private readonly List<SmtpStatusCode> mErroresNotificables = new List<SmtpStatusCode> { SmtpStatusCode.MailboxUnavailable };
 
         /// <summary>
         /// Indica el nombre del ecosistema
@@ -144,11 +143,11 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
 
         private LogStatus mEstadoProceso = LogStatus.Correcto;
 
-        private Dictionary<Guid, GestorParametroGeneral> mDiccionarioParametroGralPorProyecto = new Dictionary<Guid, GestorParametroGeneral>();
+        private readonly Dictionary<Guid, GestorParametroGeneral> mDiccionarioParametroGralPorProyecto = new Dictionary<Guid, GestorParametroGeneral>();
 
         public Dictionary<Guid, ConfiguracionEnvioCorreo> mListaConfiguracionEnvioCorreo;
-        private ILogger mlogger;
-        private ILoggerFactory mLoggerFactory;
+        private readonly ILogger mlogger;
+        private readonly ILoggerFactory mLoggerFactory;
 
         #endregion
 
@@ -201,12 +200,8 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             using (var scope = ScopedFactory.CreateScope())
             {
                 EntityContext entityContext = scope.ServiceProvider.GetRequiredService<EntityContext>();
-                EntityContextBASE entityContextBASE = scope.ServiceProvider.GetRequiredService<EntityContextBASE>();
-                UtilidadesVirtuoso utilidadesVirtuoso = scope.ServiceProvider.GetRequiredService<UtilidadesVirtuoso>();
                 LoggingService loggingService = scope.ServiceProvider.GetRequiredService<LoggingService>();
-                VirtuosoAD virtuosoAD = scope.ServiceProvider.GetRequiredService<VirtuosoAD>();
                 RedisCacheWrapper redisCacheWrapper = scope.ServiceProvider.GetRequiredService<RedisCacheWrapper>();
-                GnossCache gnossCache = scope.ServiceProvider.GetRequiredService<GnossCache>();
                 ConfigService configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
                 IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
                 IAvailableServices availableServices = scope.ServiceProvider.GetRequiredService<IAvailableServices>();
@@ -219,7 +214,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
 
                     if (!string.IsNullOrEmpty(pFila))
                     {
-                        Guid notificacionID = JsonConvert.DeserializeObject<Guid>(pFila);
+                        Guid notificacionID = JsonSerializer.Deserialize<Guid>(pFila);
 
                         AD.EntityModel.Models.Notificacion.Notificacion notificacion = entityContext.Notificacion.Where(item => item.NotificacionID.Equals(notificacionID)).FirstOrDefault();
 
@@ -267,11 +262,6 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 try
                 {
                     ComprobarCancelacionHilo();
-
-                    if (mReiniciarLecturaRabbit)
-                    {
-                        RealizarMantenimientoRabbitMQ(pLoggingService);
-                    }
 
                     //(Re)Carga los datos de la BD referentes a notificaciones
                     gestorNotificaciones = CargarDatos(pEntityContext, pLoggingService, pServicesUtilVirtuosoAndReplication);
@@ -353,15 +343,15 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
         /// Realiza el envio de las notificaciones pendientes de enviar y escribe en el fichero de log una entrada 
         /// indicando el resultado de la operación
         /// </summary>
-        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService logginService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, VirtuosoAD virtuosoAD, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService loggingService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
             if (mConfigService.ExistRabbitConnection(RabbitMQClient.BD_SERVICIOS_WIN))
             {
-                RealizarMantenimientoRabbitMQ(logginService);
+                RealizarMantenimientoRabbitMQ(loggingService);
             }
             else
             {
-                RealizarMantenimientoBD(logginService, entityContext, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
+                RealizarMantenimientoBD(loggingService, entityContext, servicesUtilVirtuosoAndReplication, redisCacheWrapper);
             }
         }
 
@@ -416,7 +406,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             return mensaje;
         }
 
-        private string MontarCabecera(string pIdioma, Notificacion notificacion, short tipoProyecto, string urlBaseProyecto, string nombreProyecto, GestorParametroGeneral pParametroGeneralDS, string pUrlProyecto, string pUrlContent, string urlStatic, UtilIdiomas pUtilIdiomas, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        private string MontarCabecera(string pIdioma, Notificacion notificacion, short tipoProyecto, string nombreProyecto, GestorParametroGeneral pParametroGeneralDS, string pUrlProyecto, string pUrlContent, UtilIdiomas pUtilIdiomas, EntityContext pEntityContext, LoggingService pLoggingService, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
             string cabecera = ObtenerTextoParteMensaje("cabecera", pParametroGeneralDS, pUtilIdiomas.LanguageCode);
 
@@ -497,7 +487,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             {
 
                 string URCONNOMBRECOMUNIDAD = utilIdiomas.GetText("METABUSCADOR", "TODASCOMUNIDADES");
-                string SECCIONNOTIFICACIONES = $"<a href=\"{urlBaseProyecto}/editar-perfil-notificacion\">{utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONNOTIFICACIONPERFIL")}</a>";
+                string SECCIONNOTIFICACIONES = $"<a href=\"{urlBaseProyecto}/editar-perfil\">{utilIdiomas.GetText("SUSCRIPCIONES", "SECCIONNOTIFICACIONPERFIL")}</a>";
 
                 if (!string.IsNullOrEmpty(nombrecortoComunidad) && notificacion.FilaNotificacion.MensajeID == (short)TiposNotificacion.BoletinSuscripcion)
                 {
@@ -744,14 +734,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                             urlContent = urlBaseProyecto;
                         }
 
-                        string urlStatic = BaseURLStatic(proyectoID, dominio, mConfigService);
-
-                        if (string.IsNullOrEmpty(urlStatic))
-                        {
-                            urlStatic = urlBaseProyecto;
-                        }
-
-                        string cabecera = MontarCabecera(idioma, pNotificacion, tipoProyecto, urlStatic, nombreProyecto, mDiccionarioParametroGralPorProyecto[proyectoID], urlProyecto, urlContent, urlStatic, utilIdiomas, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
+                        string cabecera = MontarCabecera(idioma, pNotificacion, tipoProyecto, nombreProyecto, mDiccionarioParametroGralPorProyecto[proyectoID], urlProyecto, urlContent, utilIdiomas, pEntityContext, pLoggingService, servicesUtilVirtuosoAndReplication);
 
                         string pie = MontarPie(idioma, pNotificacion, utilIdiomas, urlBaseProyecto, urlProyecto, nombreProyecto, nombrecortoComunidad, mDiccionarioParametroGralPorProyecto[proyectoID], urlContent);
 
@@ -1118,28 +1101,6 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                 {
                     pLoggingService.GuardarLog(ex.Message, mlogger);
                     throw;
-                    //notificacionCorreo.FechaEnvio = DateTime.Now;
-                    //if (notificacionCorreo.EstadoEnvio == (short)EstadoEnvio.Error)
-                    //{
-                    //    //Actualiza la fila NotificacionCorreoPersona con el estado de cancelado
-                    //    notificacionCorreo.EstadoEnvio = (short)EstadoEnvio.Cancelado;
-                    //}
-                    //else
-                    //{
-                    //    //Actualiza la fila NotificacionCorreoPersona con el estado de error
-                    //    notificacionCorreo.EstadoEnvio = (short)EstadoEnvio.Error;
-                    //}
-                    //mEstadoProceso = LogStatus.Error;
-
-                    ////Recogemos el innerexception
-                    //if (ex.InnerException != null)
-                    //{
-                    //    this.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") InnerExceptionMessage: " + this.CrearEntradaRegistro(LogStatus.Error, ex.InnerException.Message) + " InnerException StackTrace: " + ex.InnerException.StackTrace);
-                    //}
-                    //else
-                    //{
-                    //    this.GuardarLog(LogStatus.Error.ToString().ToUpper() + " (" + mFicheroConfiguracionBD + ") " + this.CrearEntradaRegistro(LogStatus.Error, ex.Message));
-                    //}
                 }
             }
 
@@ -1174,6 +1135,11 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             else if (pMensajeID >= 50 && pMensajeID <= 51)
             {
                 return pFilaConfig.InvitacionOrganizacion;
+            }
+            else if (pMensajeID >= 61 && pMensajeID <= 62)
+            {
+                //Nuevos seguidores del perfil (SeguirPerfil y SeguirPerfilComunidad)
+                return pFilaConfig.NuevosSeguidores;
             }
             return true;
         }
@@ -1226,6 +1192,11 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             else if (pMensajeID == 60)
             {
                 //Boletín suscripción
+                return true;
+            }
+            else if (pMensajeID >= 61 && pMensajeID <= 62)
+            {
+                //Nuevos seguidores del perfil
                 return true;
             }
             #endregion
@@ -1299,38 +1270,12 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
                     mProyectoPrincipalUnico = ProyectoAD.MetaProyecto;
                     if (GestorParametroAplicacionDS.ParametroAplicacion.Where(parametroAplicacion => parametroAplicacion.Parametro.Equals("ComunidadPrincipalID")).ToList().Count > 0)
                     {
-                        mProyectoPrincipalUnico = new Guid(GestorParametroAplicacionDS.ParametroAplicacion.Where(parametroAplicacion => parametroAplicacion.Parametro.Equals("ComunidadPrincipalID")).FirstOrDefault().Valor);
+                        mProyectoPrincipalUnico = new Guid(GestorParametroAplicacionDS.ParametroAplicacion.FirstOrDefault(parametroAplicacion => parametroAplicacion.Parametro.Equals("ComunidadPrincipalID")).Valor);
                     }
                 }
                 return mProyectoPrincipalUnico.Value;
             }
         }
-
-        //private string UrlIntragnoss(EntityContext pEntityContext, LoggingService pLoggingService)
-        //{
-        //    get
-        //    {
-        //        if (mUrlIntragnossBBDD == null)
-        //        {
-        //            ProyectoCN proyCN = new ProyectoCN();
-        //            mUrlIntragnossBBDD = proyCN.ObtenerURLPropiaProyecto(ProyectoAD.MetaProyecto);
-
-        //            if (string.IsNullOrEmpty(mUrlIntragnossBBDD))
-        //            {
-        //                ParametroAplicacionCN paramApliCN = new ParametroAplicacionCN(mFicheroConfiguracionBD);
-        //                mUrlIntragnossBBDD = paramApliCN.ObtenerUrl();
-        //                paramApliCN.Dispose();
-        //            }
-
-        //            if (!mUrlIntragnossBBDD.EndsWith("/"))
-        //            {
-        //                mUrlIntragnossBBDD += "/";
-        //            }
-        //        }
-
-        //        return mUrlIntragnossBBDD;
-        //    }
-        //}
 
         public Dictionary<Guid, string> UrlsPropiasProyectos
         {
@@ -1354,7 +1299,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo
             {
                 if (!mEsEcosistemaSinMetaProyecto.HasValue)
                 {
-                    mEsEcosistemaSinMetaProyecto = GestorParametroAplicacionDS.ParametroAplicacion.Where(parametroAplicacion => parametroAplicacion.Parametro.Equals(TiposParametrosAplicacion.EcosistemaSinMetaProyecto.ToString())).ToList().Count > 0 && bool.Parse((string)GestorParametroAplicacionDS.ParametroAplicacion.Where(parametroAplicacion => parametroAplicacion.Parametro.Equals(TiposParametrosAplicacion.EcosistemaSinMetaProyecto.ToString())).FirstOrDefault().Valor);
+                    mEsEcosistemaSinMetaProyecto = GestorParametroAplicacionDS.ParametroAplicacion.Where(parametroAplicacion => parametroAplicacion.Parametro.Equals(TiposParametrosAplicacion.EcosistemaSinMetaProyecto.ToString())).ToList().Count > 0 && bool.Parse((string)GestorParametroAplicacionDS.ParametroAplicacion.FirstOrDefault(parametroAplicacion => parametroAplicacion.Parametro.Equals(TiposParametrosAplicacion.EcosistemaSinMetaProyecto.ToString())).Valor);
                 }
                 return mEsEcosistemaSinMetaProyecto.Value;
             }

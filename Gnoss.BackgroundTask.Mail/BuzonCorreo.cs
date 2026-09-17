@@ -3,7 +3,6 @@ using Es.Riam.Gnoss.AD.EntityModel;
 using Es.Riam.Gnoss.AD.EntityModelBASE;
 using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.Gnoss.CL;
-using Es.Riam.Gnoss.Elementos.Suscripcion;
 using Es.Riam.Gnoss.Logica.BASE_BD;
 using Es.Riam.Gnoss.Servicios;
 using Es.Riam.Gnoss.Util.Configuracion;
@@ -12,11 +11,11 @@ using Es.Riam.Interfaces;
 using Es.Riam.Util.Correo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,21 +23,17 @@ namespace Es.Riam.Util
 {
     class BuzonCorreo : ControladorServicioGnoss
     {
-        public static int LIMITE_CORREOS = 25;
+        public static readonly int LIMITE_CORREOS = 25;
 
         #region Miembros
-        private string mBuzon;
-        private Dictionary<DateTime, int> mHistorialEnvios;
+        private readonly string mBuzon;
+        private readonly Dictionary<DateTime, int> mHistorialEnvios;
         private List<Email> mCorreosEnviar;
         private Task tarea;
         private BaseComunidadCN mBaseComunidadCN;
         private CancellationTokenSource mCancellationToken;
-        private EntityContext mEntityContext;
-        //private string mFicheroConfiguracionBDBase;
-        //private string mFicheroConfiguracionBDOriginal;
-        string mDirectorioLog;
-        private ILogger mLogger;
-        private ILoggerFactory mLoggerFactory;
+        private readonly ILogger mLogger;
+        private readonly ILoggerFactory mLoggerFactory;
         #endregion
 
         #region Constructores
@@ -48,8 +43,6 @@ namespace Es.Riam.Util
             mHistorialEnvios = new Dictionary<DateTime, int>();
             mLogger = logger;
             mLoggerFactory = loggerFactory;
-            //mFicheroConfiguracionBDBase = pFicheroConfiguracionBD;
-            //mFicheroConfiguracionBDOriginal = pFicheroConfiguracionBDOriginal;
 
             mDirectorioLog = pDirectorioLog + Path.DirectorySeparatorChar + mBuzon.Replace("http://", "").Replace("https://", "").Replace("/", "_");
             DirectoryInfo directorioLog = new DirectoryInfo(mDirectorioLog);
@@ -366,7 +359,7 @@ namespace Es.Riam.Util
                     }
                 }
 
-                pLoggingService.GuardarLogDebug($"Enviado correo: {JsonConvert.SerializeObject(pCorreo)}", mLogger);
+                pLoggingService.GuardarLogDebug($"Enviado correo: {JsonSerializer.Serialize(pCorreo)}", mLogger);
                 mBaseComunidadCN.BorrarCorreosEnviadosCorrectamente(pCorreo.CorreoID);
 
                 bool correosNoEnviados = mBaseComunidadCN.ComprobarCorreosPendientesEnviar(pCorreo.CorreoID);
@@ -391,7 +384,7 @@ namespace Es.Riam.Util
             return null;
         }
 
-        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService loggingService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, VirtuosoAD virtuosoAD, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService loggingService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
         }
 

@@ -1,17 +1,14 @@
 ﻿using Es.Riam.Gnoss.Logica.BASE_BD;
 using Es.Riam.Gnoss.Servicios;
 using Es.Riam.Util;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Es.Riam.Gnoss.RabbitMQ;
 using Es.Riam.Gnoss.Util.General;
 using Es.Riam.Gnoss.Recursos;
-using Es.Riam.Gnoss.Logica.Organizador.Correo;
 using Es.Riam.Gnoss.AD.EntityModelBASE.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Es.Riam.Gnoss.Util.Configuracion;
@@ -21,7 +18,7 @@ using Es.Riam.Gnoss.CL;
 using Es.Riam.Gnoss.AD.Virtuoso;
 using Es.Riam.AbstractsOpen;
 using Microsoft.Extensions.Logging;
-using Es.Riam.Gnoss.Elementos.Suscripcion;
+using System.Text.Json;
 
 namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 {
@@ -36,11 +33,11 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
         #region Miembros
         List<string> mListaBuzones;
-        Dictionary<string, BuzonCorreo> mDicBuzones;
+        private readonly Dictionary<string, BuzonCorreo> mDicBuzones;
         BaseComunidadCN mBaseComunidadCN;
-        string mDirectorioLog;
-        private ILogger mlogger;
-        private ILoggerFactory mLoggerFactory;
+        private readonly string mDirectorioLog;
+        private readonly ILogger mlogger;
+        private readonly ILoggerFactory mLoggerFactory;
         #endregion
 
         #region Constructor
@@ -78,50 +75,50 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
         /// Realiza el envio de los correos pendientes de enviar y escribe en el fichero de log una entrada 
         /// indicando el resultado de la operación
         /// </summary>
-        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService loggingService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, VirtuosoAD virtuosoAD, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        public override void RealizarMantenimiento(EntityContext entityContext, EntityContextBASE entityContextBASE, UtilidadesVirtuoso utilidadesVirtuoso, LoggingService loggingService, RedisCacheWrapper redisCacheWrapper, GnossCache gnossCache, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
         {
             RealizarMantenimientoRabbitMQ(loggingService);
-            RealizarMantenimientoBD(loggingService, entityContext, entityContextBASE, servicesUtilVirtuosoAndReplication);
+            RealizarMantenimientoBD(loggingService);
         }
         #endregion
 
-        #region Privados      
+        #region Privados
 
-        private void RealizarMantenimientoBD(LoggingService pLoggingService, EntityContext pEntityContext, EntityContextBASE pEntityContextBASE, IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication)
+        private void RealizarMantenimientoBD(LoggingService pLoggingService)
         {
             while (true)
             {
+                mBaseComunidadCN = null;
                 try
                 {
                     ComprobarCancelacionHilo();
 
-                    if (mReiniciarLecturaRabbit)
+                    using (var scope = ScopedFactory.CreateScope())
                     {
-                        RealizarMantenimientoRabbitMQ(pLoggingService);
-                    }
+                        EntityContext entityContext = scope.ServiceProvider.GetRequiredService<EntityContext>();
+                        EntityContextBASE entityContextBASE = scope.ServiceProvider.GetRequiredService<EntityContextBASE>();
+                        IServicesUtilVirtuosoAndReplication servicesUtilVirtuosoAndReplication = scope.ServiceProvider.GetRequiredService<IServicesUtilVirtuosoAndReplication>();
 
-                    if (mBaseComunidadCN == null)
-                    {
-                        mBaseComunidadCN = new BaseComunidadCN(pEntityContext,  pLoggingService, pEntityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
-                    }
+                        mBaseComunidadCN = new BaseComunidadCN(entityContext, pLoggingService, entityContextBASE, mConfigService, servicesUtilVirtuosoAndReplication, mLoggerFactory.CreateLogger<BaseComunidadCN>(), mLoggerFactory);
 
-                    CargarDatos();
-                    foreach (string buzon in mListaBuzones)
-                    {
-                        BuzonCorreo buzonCorreo;
-                        if (mDicBuzones.ContainsKey(buzon))
+                        CargarDatos();
+                        foreach (string buzon in mListaBuzones)
                         {
-                            buzonCorreo = mDicBuzones[buzon];
-                            if (buzonCorreo.PuedoEnviar())
+                            BuzonCorreo buzonCorreo;
+                            if (mDicBuzones.ContainsKey(buzon))
                             {
+                                buzonCorreo = mDicBuzones[buzon];
+                                if (buzonCorreo.PuedoEnviar())
+                                {
+                                    buzonCorreo.LanzarEnvio();
+                                }
+                            }
+                            else
+                            {
+                                buzonCorreo = new BuzonCorreo(buzon, ScopedFactory, mConfigService, mDirectorioLog, mLoggerFactory.CreateLogger<BuzonCorreo>(), mLoggerFactory);
+                                mDicBuzones.Add(buzon, buzonCorreo);
                                 buzonCorreo.LanzarEnvio();
                             }
-                        }
-                        else
-                        {
-                            buzonCorreo = new BuzonCorreo(buzon, ScopedFactory, mConfigService, mDirectorioLog, mLoggerFactory.CreateLogger<BuzonCorreo>(), mLoggerFactory);
-                            mDicBuzones.Add(buzon, buzonCorreo);
-                            buzonCorreo.LanzarEnvio();
                         }
                     }
                 }
@@ -190,7 +187,7 @@ namespace Es.Riam.Gnoss.Win.ServicioCorreo.Principal
 
                     if (!string.IsNullOrEmpty(pFila))
                     {
-                        int correoID = JsonConvert.DeserializeObject<int>(pFila);
+                        int correoID = JsonSerializer.Deserialize<int>(pFila);
 
                         ProcesarCorreo(correoID, entityContext, entityContextBASE, loggingService, servicesUtilVirtuosoAndReplication);
 
